@@ -1,22 +1,30 @@
-from lib2to3.pgen2.token import NUMBER
 import time
 from selenium import webdriver
 import sys 
 from random import randint, shuffle
 from traceback import print_exc
-from pprint import pp, pprint
+from pprint import pprint
 import sys 
 from svglib.svglib import svg2rlg
 from reportlab.graphics import renderPM
 import re
 import cv2 
 import pytesseract
-from pprint import pprint
+import json 
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait 
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.action_chains import ActionChains
+from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
+
+
+
+
+def process_browser_log_entry(entry):
+    response = json.loads(entry['message'])['message']
+    return response
+
 
 def get_all_planes(dv):
     try:
@@ -29,7 +37,6 @@ def get_all_planes(dv):
 def find_planes(dv):
     result = []
     cnt = 0
-   
     NUM_OF_PLANES = get_all_planes(dv)
     print("FOUND ", NUM_OF_PLANES )
     for index in range(NUM_OF_PLANES):
@@ -63,8 +70,9 @@ def find_planes(dv):
 
 def get_captcha_svg(dv):
     try:
-        svg =  dv.find_element_by_xpath('//*[@id="confirm-training"]/div/div/div/div/form/div[1]/div[1]/div/svg').get_attribute('innerHTML')
+        svg =  dv.find_element_by_xpath('//*[@id="confirm-training"]/div/div/div/div/form/div[1]/div[1]/div').get_attribute('innerHTML')
     except Exception as e:
+        print(e)
         svg = ""
     return svg
 
@@ -72,7 +80,6 @@ def get_captcha_input(dv):
     input = dv.find_element_by_xpath('//*[@id="captcha"]')
     confirm_btn = dv.find_element_by_xpath('//*[@id="confirm-training"]/div/div/div/div/form/div[2]/button[1]')
     return input, confirm_btn
-
 
 
 def remove_stroke(svg_code):
@@ -109,7 +116,7 @@ def png2text(png_path="temp/captcha.png"):
         return cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     
     def remove_noise(image):
-        return cv2.medianBlur(image, 7)
+        return cv2.medianBlur(image, 5)
 
     img = cv2.imread(png_path)
 
@@ -117,36 +124,19 @@ def png2text(png_path="temp/captcha.png"):
     noise = remove_noise(gray)
 
     # Adding custom options
-    custom_config = r'--psm 10 --oem 3'
+    custom_config = r'-l eng --oem 3 --psm 6 -c tessedit_char_whitelist=0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
     res = pytesseract.image_to_string(noise, config=custom_config)
     return res
 
 
 def input_catpcha(btn, driver):
-
-    while 1:
-        try:
-            confirm_captcha_modal = driver.find_element_by_xpath('//*[@id="confirm-training"]')
-            class_name = confirm_captcha_modal.get_attribute("class") 
-
-            if class_name == "modal fade show":
-                print("Modal open ")
-                break
-
-        except Exception as e:
-            print(e)
-            
-        time.sleep(1)
-        print("waiting modal")
-        btn.sendKeys()
-
     svg_code = get_captcha_svg(driver)
     convert_svg2png(svg_code)
     captcha_text = png2text()
     if not captcha_text:
-        input_catpcha()
+        input_catpcha(btn, driver)
 
-    return captcha_text
+    return captcha_text.replace(" ", "")
 
 
 def close_modal_btn(dv):
@@ -157,90 +147,102 @@ def close_modal_btn(dv):
         return False
     
     return True
-def isCorrect(driver):
-    for request in driver.requests:
-        if request.response:
-            print(
-                request.url,
-                request.response.status_code,
-                request.response.headers['Content-Type']
-            )
 
 def click_n_wait(btn, xpath, timeout=5):
     btn.click()
-    wait.until(EC.presence_of_element_located((By.XPATH, xpath)))
+    wait.until(EC.visibility_of_element_located((By.XPATH, xpath)))
 
-def auto_play(planes, driver):
-#     planes = [{'btn': '<selenium.webdriver.remote.webelement.WebElement (session="94454c62ae861b8be4a67ce893509dba", element="bfb5feb2-bb40-4b24-849b-7afb5248c431")>',
-#   'fuel': 60,
-#   'id': '#180307',
-#   'name': 'TWINPYRE',
-#   'rarity': 'COMMON'},
-#  {'btn': '<selenium.webdriver.remote.webelement.WebElement (session="94454c62ae861b8be4a67ce893509dba", element="fac777e2-f147-4235-8621-fd2c0fa4b857")>',
-#   'fuel': 60,
-#   'id': '#88779',
-#   'name': 'SKYRAID',
-#   'rarity': 'COMMON'},
-#  {'btn': '<selenium.webdriver.remote.webelement.WebElement (session="94454c62ae861b8be4a67ce893509dba", element="73c7202c-333e-4dd0-a65c-21bfb6557c2b")>',
-#   'fuel': 60,
-#   'id': '#76963',
-#   'name': 'SKYRAID',
-#   'rarity': 'COMMON'},
-#  {'btn': '<selenium.webdriver.remote.webelement.WebElement (session="94454c62ae861b8be4a67ce893509dba", element="46ef73ed-3e01-4fcf-936e-540451f96e5b")>',
-#   'fuel': 60,
-#   'id': '#62967',
-#   'name': 'WATER BOATMEN',
-#   'rarity': 'CLASSIC'},
-#  {'btn': '<selenium.webdriver.remote.webelement.WebElement (session="94454c62ae861b8be4a67ce893509dba", element="36c91c58-2d11-4ef4-97c0-16703d91a12c")>',
-#   'fuel': 60,
-#   'id': '#62963',
-#   'name': 'SKYRAID',
-#   'rarity': 'COMMON'}]
+def filter_XHR(event):
+    type = event['params'].get("type", "")
+    if "XHR" in type:
+        return True
+    return False
 
-    pprint(planes)
-    ## random order to play 
-    ## Create all turn list
-    all_turn = []
-    for p in planes:
-        [ all_turn.append(p) for i in range(p["fuel"]//15) ] 
+def isCorrect(driver):
+    browser_log = driver.get_log('performance')
+    events = [process_browser_log_entry(entry) for entry in browser_log]
+    events = [event for event in events if 'Network.responseReceived' in event['method'] and filter_XHR(event)]
+    for ev in events:
+        url = ev['params']["response"]["url"]
+        status = ev['params']["response"]["status"]
+
+        print(url, status)
+        if url == "https://cryptoplanes.me/plane/training/virtual" and status == 200:
+            return 1
+        elif url == "https://cryptoplanes.me/plane/training/virtual" and status != 200:
+            return 0
+
+def auto_play(driver):
     
-    ## Caculate number of 
-    [ shuffle(all_turn) for i in range(randint(2, 4))] 
-
-    for t in all_turn:
+    t_index = 0
+    while 1:
+        planes = find_planes(driver) 
+        ## random order to play 
+        ## Create all turn list
+        # all_turn = []
+        # for p in planes:
+        #     [ all_turn.append(p) for i in range(p["fuel"]//15) ] 
         
-        ## input captcha 
-        click_n_wait(t["btn"], '//*[@id="confirm-training"]/div/div/div/div/form/div[1]/div[1]/div/svg')
-        print("clicked button")
-        captcha_text = input_catpcha(t["btn"], driver)
-        captcha_input, confirm_btn = get_captcha_input(driver)
+        # ## Caculate number of 
+        # [ shuffle(all_turn) for i in range(randint(2, 4))] 
 
-        captcha_input.send_keys(captcha_text)
+        all_turn = planes
+
+        if not len(all_turn):
+            return 1
+
+        t = all_turn[-1]
+        time.sleep(1)
+        print(f"Play turn {t_index+1} : { t['name']} {t['id']} ")
+        ## input captcha    
+        try:            
+            t["btn"].send_keys(Keys.ENTER)
+            print("clicked button")
+        except Exception as e:
+            print(e)
+
+        time.sleep(1.5)
+        captcha_input, confirm_btn = get_captcha_input(driver)
+        wait.until(EC.visibility_of_element_located((By.XPATH, '//*[@id="confirm-training"]/div/div/div/div/form/div[1]/div[1]/div')))
+        captcha_text = input_catpcha(t["btn"], driver)
+        time.sleep(2)
+        print("Captcha is ", captcha_text)
+        cancel_btn = driver.find_element_by_xpath('//*[@id="confirm-training"]/div/div/div/div/form/div[2]/button[2]')
+        #
+        captcha_input.send_keys(captcha_text[:4])
         confirm_btn.send_keys(Keys.ENTER)
 
-        isCorrect()
-        break
-        if isCorrect():
+        time.sleep(2)
+        res = isCorrect(driver)
+        
+        if res:
+            while 1:
+                try:
+                    result_btn = driver.find_element_by_xpath('//*[@id="virtual-training"]/div/div/div/div[2]/div[1]/div')
+                except Exception as e:
+                    print("keep waiting ...")
+                else:
+                    if "CPAN" in result_btn.text or "EXP" in result_btn.text:
+                        time.sleep(1)
+                        result_btn = driver.find_element_by_xpath('//*[@id="virtual-training"]/div/div/div/div[2]/div[1]/div')
+                        driver.refresh()
+                        
+                        break
+                    else:
+                        print("keep waiting ...")
+                time.sleep(5)
+
             
-            while close_modal_btn(driver):
-                time.sleep(1)
+            print("Done ...")
+        time.sleep(1)
 
 def start_process():
-    ans = input("[AX CPAN BOT ] [INFO ] Are you log-in to crypto-planes (yes, no) : ")
-    if ans.lower() in ["yes", "y"]:
-        ans = input("[AX CPAN BOT ] [INFO ] Are you Re-fuel your planes (yes, no) : ")
-        all_planes_obj = find_planes(driver) 
-        auto_play(all_planes_obj, driver)
-    else:
-        ans = input("[AX CPAN BOT ] [INFO ] Do you want to exit (yes, no) : ") 
-        if ans.lower() in ["yes", "y"]:
-            return 
-        else:
-            start_process()
+    auto_play(driver)
 
 if __name__ == "__main__":
     
     options = webdriver.ChromeOptions()
+    options.add_argument("start-maximized")
     options.add_argument("--user-data-dir=C://Users//nutti//AppData//Local//Google//Chrome//User Data")
 
     # USE THIS IF YOU NEED TO HAVE MULTIPLE PROFILES
@@ -248,8 +250,10 @@ if __name__ == "__main__":
 
     options.add_argument('--log-level=3')
     try:
-        driver = webdriver.Chrome("./chromedriver_win32/chromedriver.exe", options=options)
-        wait = WebDriverWait(driver, 20)
+        caps = DesiredCapabilities.CHROME
+        caps['goog:loggingPrefs'] = {'performance': 'ALL'}
+        driver = webdriver.Chrome("./chromedriver_win32/chromedriver.exe", options=options, desired_capabilities=caps)
+        wait = WebDriverWait(driver, 60)
         
         
         driver.get('https://cryptoplanes.me/play/#/planes')
@@ -264,7 +268,11 @@ if __name__ == "__main__":
             "SUPER" : 6,
             "RARE" : 7,
         }
-        for i in range(5):
+ 
+        res = start_process()
+
+        NUM_OF_PLANES = get_all_planes(driver)
+        for i in range(NUM_OF_PLANES):
             wait.until(EC.visibility_of_element_located((By.XPATH, '//*[@id="app"]/div[1]/div/div[2]/div[1]')))
             time.sleep(1)
             btn = driver.find_element_by_xpath(f'//*[@id="app"]/div[1]/div/div[2]/div[{i+1}]/div/div[6]/div/div[2]/button')
@@ -294,17 +302,6 @@ if __name__ == "__main__":
             time.sleep(2)
             main_div.click()
             time.sleep(1)
-
-        # start_process()
-
-        if ":" not in refuel_btn.text:
-            print("Refuel all planes", refuel_btn.text)
-            refuel_btn.send_keys(Keys.ENTER)
-
-            all_planes_obj = find_planes(driver)
-            pprint(all_planes_obj)
-        else:
-            print("Please wait for ", refuel_btn.text.split(" ")[1])
 
     except Exception as e:
         print(print_exc())
