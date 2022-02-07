@@ -4,7 +4,7 @@ import sys
 from random import randint, shuffle
 from traceback import print_exc
 from pprint import pprint
-import pandas as pd
+import sys 
 import pyautogui
 from svglib.svglib import svg2rlg
 from reportlab.graphics import renderPM
@@ -95,7 +95,7 @@ def remove_stroke(svg_code):
             new_svg.append(tag)
 
         elif tag.startswith("<path") and "stroke" not in tag:
-            ## change color 
+             ## change color 
             tag = re.sub(r'fill="#.{6}"', 'fill="#ff0000"', tag)
             new_svg.append(tag)
             new_svg.append("</path>")
@@ -139,11 +139,7 @@ def input_catpcha(btn, driver):
     if not captcha_text:
         input_catpcha(btn, driver)
 
-    r = captcha_text.replace(" ", "")[:4].strip()
-    if not r or len(r) < 4: 
-        return "AAAA"
-
-    return r
+    return captcha_text.replace(" ", "")[:4].strip()
 
 
 def close_modal_btn(dv):
@@ -172,6 +168,7 @@ def isCorrect(driver):
     for ev in events:
         url = ev['params']["response"]["url"]
         status = ev['params']["response"]["status"]
+
         print(url, status)
         if url == "https://cryptoplanes.me/plane/training/virtual" and status == 200:
             return 1
@@ -189,16 +186,18 @@ def auto_play(driver):
         # for p in planes:
         #     [ all_turn.append(p) for i in range(p["fuel"]//15) ] 
         
-    
+        # ## Caculate number of 
+        # [ shuffle(all_turn) for i in range(randint(2, 4))] 
+
         all_turn = planes
-        
 
         if not len(all_turn):
             return 1
-        
-        i = randint(0, len(all_turn)-1)
-        
-        t = all_turn[i]
+
+        shuffle(all_turn)
+        shuffle(all_turn)
+
+        t = all_turn[-1]
         time.sleep(1)
         print(f"Play turn {t_index+1} : { t['name']} {t['id']} ")
         ## input captcha    
@@ -209,7 +208,6 @@ def auto_play(driver):
             print(e)
 
         time.sleep(1.5)
-       
         wait.until(EC.visibility_of_element_located((By.XPATH, '//*[@id="confirm-training"]/div/div/div/div/form/div[1]/div[1]/div')))
         captcha_text = input_catpcha(t["btn"], driver)
         time.sleep(2)
@@ -218,7 +216,7 @@ def auto_play(driver):
         cancel_btn = driver.find_element_by_xpath('//*[@id="confirm-training"]/div/div/div/div/form/div[2]/button[2]')
         #
         captcha_input.send_keys(captcha_text[:4])
-        time.sleep(0.8)
+        time.sleep(0.5)
         confirm_btn.send_keys(Keys.ENTER)
 
         time.sleep(2)
@@ -256,25 +254,26 @@ def start_process():
 
 if __name__ == "__main__":
     
+    pytesseract.pytesseract.tesseract_cmd = 'C://Program Files//Tesseract-OCR//tesseract.exe'
     options = webdriver.ChromeOptions()
     options.add_argument("start-maximized")
-    options.add_argument("--user-data-dir=C://Users//nutti//AppData//Local//Google//Chrome//User Data")
+    options.add_argument("--user-data-dir=C://Users//sophi//AppData//Local//Google//Chrome//User Data")
 
     # USE THIS IF YOU NEED TO HAVE MULTIPLE PROFILES
-    options.add_argument('--profile-directory=Profile 1')
+    options.add_argument('--profile-directory=Profile 2')
 
     options.add_argument('--log-level=3')
     try:
         caps = DesiredCapabilities.CHROME
         caps['goog:loggingPrefs'] = {'performance': 'ALL'}
-        driver = webdriver.Chrome("./chromedriver_win32/chromedriver.exe", options=options, desired_capabilities=caps)
+        driver = webdriver.Chrome("C://Users//sophi//Downloads//ax-cpan-bot//ax-cpan-bot//chromedriver_win32//chromedriver.exe", options=options, desired_capabilities=caps)
         wait = WebDriverWait(driver, 60)
         
         
         driver.get('https://cryptoplanes.me/play/#/planes')
         time.sleep(6)
         
-        
+        main_div = driver.find_element_by_xpath('//*[@id="app"]')
         
         refuel_btn = driver.find_element_by_xpath('//*[@id="app"]/div[1]/div/div[1]/div/button[1]')
         mapper = {
@@ -288,8 +287,6 @@ if __name__ == "__main__":
         main_div = driver.find_element_by_xpath('//*[@id="app"]')
 
         NUM_OF_PLANES = get_all_planes(driver)
-
-        virtual_result = []
         for i in range(NUM_OF_PLANES):
             time.sleep(2)
             wait.until(EC.visibility_of_element_located((By.XPATH, '//*[@id="app"]/div[1]/div/div[2]/div[1]')))
@@ -313,13 +310,9 @@ if __name__ == "__main__":
            
             num_rewards_div = len(driver.find_elements_by_xpath('//*[@id="reward-history"]/div/div/div/div[3]/div'))
             claim_btn = driver.find_element_by_xpath(f'//*[@id="reward-history"]/div/div/div/div[3]/div[1]/div[1]/div/button')
-            _id = driver.find_element_by_xpath(f'//*[@id="app"]/div[1]/div/div[2]/div[{i+1}]/div/div[2]/span').text
-            name = driver.find_element_by_xpath(f'//*[@id="app"]/div[1]/div/div[2]/div[{i+1}]/div/div[4]/div[1]/p[2]').text
             total_earn = driver.find_element_by_xpath(f'//*[@id="reward-history"]/div/div/div/div[3]/div[1]/div[2]/table/tbody/tr[{mapper.get(rarity, 5)}]')
             recently_total_earn = driver.find_element_by_xpath(f'//*[@id="reward-history"]/div/div/div/div[3]/div[{num_rewards_div}]/div[2]/table/tbody/tr[{mapper.get(rarity, 5)}]')
             print("Recently earn", recently_total_earn.text)
-            print("NAME : ", name, _id)
-            virtual_result.append([f"{name}{_id}", recently_total_earn.text])
             if claim_btn.text.strip() == "CLAIM":
                 print("Claim ", total_earn.text)
                 claim_btn.send_keys(Keys.ENTER)
@@ -331,8 +324,7 @@ if __name__ == "__main__":
             close_btn = driver.find_element_by_xpath('//*[@id="reward-history"]/div/div/div/button')     
             close_btn.click()
             
-        df = pd.DataFrame(virtual_result)
-        print(df)
+
     except Exception as e:
         print(print_exc())
 
